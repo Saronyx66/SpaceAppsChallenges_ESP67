@@ -121,7 +121,7 @@ def max_deviation(p, i, j):
     return 0.0 if n == 0 else np.abs(seg[:, 0] * d[1] - seg[:, 1] * d[0]).max() / n
 
 
-def simplify(path, cost, tol=1.02, max_dev=2.0, max_seg=150):
+def simplify(path, cost, tol=1.03, max_dev=2.5, max_seg=150):
     p = np.array(path)
     step = np.hypot(*np.diff(p, axis=0).T) * (cost[p[:-1, 0], p[:-1, 1]] + cost[p[1:, 0], p[1:, 1]]) / 2
     cum = np.concatenate([[0], np.cumsum(step)])
@@ -145,6 +145,14 @@ def wheel_deg(dist_m):
     return round(float(dist_m / (np.pi * WHEEL_DIAMETER_M) * 360), 1)
 
 
+def command(action, angle, heading, mars_m, left, right):
+    return {"action": action, "angle_deg": round(float(angle), 1),
+            "heading_deg": round(float(heading), 1),
+            "mars_distance_m": round(float(mars_m), 1),
+            "robot_distance_m": round(float(mars_m * SCALE), 3),
+            "left_wheel_deg": float(left), "right_wheel_deg": float(right)}
+
+
 def to_commands(waypoints, res):
     cmds, heading = [], START_HEADING_DEG
     for a, b in zip(waypoints[:-1], waypoints[1:]):
@@ -152,18 +160,12 @@ def to_commands(waypoints, res):
         target = np.degrees(np.arctan2(dc, -dr)) % 360
         turn = wrap(target - heading)
         if abs(turn) >= 0.5:
-            arc = np.radians(abs(turn)) * TRACK_WIDTH_M / 2
-            w = wheel_deg(arc) * np.sign(turn)
-            cmds.append({"action": "turn", "angle_deg": round(float(turn), 1),
-                         "heading_deg": round(float(target), 1),
-                         "left_wheel_deg": float(w), "right_wheel_deg": float(-w)})
+            w = wheel_deg(np.radians(abs(turn)) * TRACK_WIDTH_M / 2) * np.sign(turn)
+            cmds.append(command("turn", turn, target, 0, w, -w))
         heading = target
         mars_m = np.hypot(dr, dc) * res
         w = wheel_deg(mars_m * SCALE)
-        cmds.append({"action": "forward", "mars_distance_m": round(float(mars_m), 1),
-                     "robot_distance_m": round(float(mars_m * SCALE), 3),
-                     "heading_deg": round(float(target), 1),
-                     "left_wheel_deg": w, "right_wheel_deg": w})
+        cmds.append(command("forward", 0, target, mars_m, w, w))
     return cmds
 
 
