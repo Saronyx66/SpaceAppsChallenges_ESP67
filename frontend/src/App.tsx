@@ -1,17 +1,19 @@
-import { useCallback, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent, WheelEvent } from "react";
-import terrainImage from "./assets/mars-terrain.jpg";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
+import type { TerrainCamera } from "./terrain/TerrainScene";
+import type { MapCoordinates } from "./terrain/surface";
+import { TERRAIN_LAYERS, terrainLayer, type TerrainLayerId } from "./terrain/layers";
+const DashboardTerrain = lazy(() => import("./terrain/DashboardTerrain"));
+// Match the CSS viewport breakpoint exactly: 1024px is always desktop.
+const MOBILE_LAYOUT_QUERY = "(width < 1024px)";
 
 type Coordinates = { x: string; y: string };
 type Point = { x: number; y: number };
-type MapLayer = "altitude" | "climate";
+type MapLayer = TerrainLayerId;
 type Size = { width: number; height: number };
 type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
-const MAP_LAYERS: { id: MapLayer; name: string; detail: string }[] = [
-  { id: "altitude", name: "Altitude Map", detail: "Martian terrain elevation" },
-  { id: "climate", name: "Climate Map", detail: "Climate data when available" },
-];
+const MAP_LAYERS = TERRAIN_LAYERS;
 
 const INITIAL_BASE = { x: "24.6", y: "68.2" };
 const INITIAL_DESTINATION = { x: "67.5", y: "34.8" };
@@ -59,68 +61,59 @@ function CompassMark() {
 function CoordinateFields({
   value,
   onChange,
+  error,
+  id,
 }: {
   value: Coordinates;
+  error: string;
+  id: string;
   onChange: (next: Coordinates) => void;
 }) {
   return (
-    <div className="coordinate-grid">
-      {(["x", "y"] as const).map((axis) => (
-        <label className="coordinate-field" key={axis}>
-          <span>{axis.toUpperCase()}</span>
-          <input
-            aria-label={`${axis.toUpperCase()} coordinate`}
-            inputMode="decimal"
-            onChange={(event) => onChange({ ...value, [axis]: event.target.value })}
-            type="text"
-            value={value[axis]}
-          />
-        </label>
-      ))}
-    </div>
-  );
-}
-
-function Marker({ kind, point }: { kind: "base" | "destination"; point: Point }) {
-  const isBase = kind === "base";
-  return (
-    <div
-      className={`map-marker map-marker--${kind}`}
-      style={{ left: `${point.x}%`, top: `${point.y}%` }}
-    >
-      <span className="marker-label">{isBase ? "BASE" : "DESTINATION"}</span>
-      <span className="marker-pin">
-        {isBase ? (
-          <svg aria-hidden="true" viewBox="0 0 18 18">
-            <path d="M3 14.5h12M5 14.5V8l4-3.5L13 8v6.5M7.2 14.5v-4h3.6v4" />
-          </svg>
-        ) : (
-          <span className="marker-dot" />
-        )}
-      </span>
-    </div>
-  );
-}
-
-function RouteLine({ start, end }: { start: Point; end: Point }) {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const bend = dx > 0 ? -10 : 10;
-  const path = `M ${start.x} ${start.y} C ${start.x + dx * 0.28 + bend} ${start.y + dy * 0.3}, ${start.x + dx * 0.7 - bend} ${start.y + dy * 0.67}, ${end.x} ${end.y}`;
-
-  return (
-    <svg aria-hidden="true" className="route-line" preserveAspectRatio="none" viewBox="0 0 100 100">
-      <path className="route-line-shadow" d={path} />
-      <path className="route-line-core" d={path} />
-    </svg>
+    <>
+      <div className="coordinate-grid">
+        {(["x", "y"] as const).map((axis) => (
+          <label className="coordinate-field" key={axis}>
+            <span>{axis.toUpperCase()}</span>
+            <input
+              aria-label={`${axis.toUpperCase()} coordinate`}
+              aria-invalid={!!error}
+              aria-describedby={error ? `${id}-error` : undefined}
+              inputMode="decimal"
+              onChange={(event) => onChange({ ...value, [axis]: event.target.value })}
+              type="text"
+              value={value[axis]}
+            />
+          </label>
+        ))}
+      </div>
+      {error && (
+        <p id={`${id}-error`} className="coordinate-error" role="alert">
+          {error}
+        </p>
+      )}
+    </>
   );
 }
 
 function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [narrowLayout, setNarrowLayout] = useState(
+    () => window.matchMedia(MOBILE_LAYOUT_QUERY).matches,
+  );
+  const sidebarToggleRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const media = window.matchMedia(MOBILE_LAYOUT_QUERY);
+    const change = () => setNarrowLayout(media.matches);
+    media.addEventListener("change", change);
+    return () => media.removeEventListener("change", change);
+  }, []);
   const [base, setBase] = useState<Coordinates>(INITIAL_BASE);
   const [destination, setDestination] = useState<Coordinates>(INITIAL_DESTINATION);
   const [activeLayer, setActiveLayer] = useState<MapLayer>("altitude");
   const [layersOpen, setLayersOpen] = useState(true);
+  // Retain the panel implementation, but no frontend action opens it until
+  // actual route results are supplied by a future integration.
   const [routeCalculated, setRouteCalculated] = useState(false);
   const [routePanelOpen, setRoutePanelOpen] = useState(true);
   const [routePanelPosition, setRoutePanelPosition] = useState<Point>({ x: 22, y: 22 });
@@ -143,74 +136,31 @@ function App() {
   } | null>(null);
   const [selectingDestination, setSelectingDestination] = useState(false);
   const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
-  const [dragStart, setDragStart] = useState<Point | null>(null);
-  const [hasDragged, setHasDragged] = useState(false);
+  const cameraRef = useRef<TerrainCamera | null>(null);
+  const [validation, setValidation] = useState({ base: false, destination: false, ready: false });
+  const [notice, setNotice] = useState("");
   const mapRef = useRef<HTMLDivElement>(null);
   const routeCardRef = useRef<HTMLElement>(null);
-
-  const basePoint = {
-    x: Math.min(96, Math.max(4, Number(base.x) || 0)),
-    y: Math.min(96, Math.max(4, Number(base.y) || 0)),
-  };
-  const destinationPoint = {
-    x: Math.min(96, Math.max(4, Number(destination.x) || 0)),
-    y: Math.min(96, Math.max(4, Number(destination.y) || 0)),
-  };
-
-  const adjustZoom = useCallback((delta: number) => {
-    setZoom((current) => Math.min(2.2, Math.max(1, current + delta)));
-    if (delta < 0) {
-      setPan((current) => ({
-        x: current.x * 0.78,
-        y: current.y * 0.78,
-      }));
+  const onDestinationSelect = useCallback((value: MapCoordinates | null) => {
+    if (!value) {
+      setNotice("Choose a point on valid terrain, away from gaps.");
+      return;
     }
-  }, []);
-
-  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    adjustZoom(event.deltaY < 0 ? 0.12 : -0.12);
-  };
-
-  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setDragStart({ x: event.clientX - pan.x, y: event.clientY - pan.y });
-    setHasDragged(false);
-  };
-
-  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!dragStart) return;
-    const next = {
-      x: event.clientX - dragStart.x,
-      y: event.clientY - dragStart.y,
-    };
-    if (Math.abs(next.x - pan.x) > 2 || Math.abs(next.y - pan.y) > 2) {
-      setHasDragged(true);
-    }
-    const limit = 180 * zoom;
-    setPan({
-      x: Math.min(limit, Math.max(-limit, next.x)),
-      y: Math.min(limit, Math.max(-limit, next.y)),
-    });
-  };
-
-  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    setDragStart(null);
-    if (!selectingDestination || hasDragged || !mapRef.current) return;
-
-    const bounds = mapRef.current.getBoundingClientRect();
-    const x = ((event.clientX - bounds.left - pan.x) / zoom / bounds.width) * 100;
-    const y = ((event.clientY - bounds.top - pan.y) / zoom / bounds.height) * 100;
-    setDestination({
-      x: Math.min(96, Math.max(4, x)).toFixed(1),
-      y: Math.min(96, Math.max(4, y)).toFixed(1),
-    });
+    setDestination(value);
     setSelectingDestination(false);
-    setRouteCalculated(false);
+    setNotice("");
+  }, []);
+  const coordinateError = (value: Coordinates, valid: boolean) => {
+    if (
+      [value.x, value.y].some(
+        (v) => !v.trim() || !Number.isFinite(Number(v)) || Number(v) < 0 || Number(v) > 100,
+      )
+    )
+      return "Enter X and Y between 0 and 100.";
+    return validation.ready && !valid
+      ? "This location is outside the valid terrain footprint."
+      : "";
   };
-
   const handleRouteDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     event.stopPropagation();
@@ -315,37 +265,42 @@ function App() {
   };
 
   const calculateRoute = () => {
-    const allValues = [base.x, base.y, destination.x, destination.y];
-    if (
-      allValues.some(
-        (value) =>
-          value.trim() === "" ||
-          !Number.isFinite(Number(value)) ||
-          Number(value) < 0 ||
-          Number(value) > 100,
-      )
-    )
-      return;
-    setRouteCalculated(true);
-    setRoutePanelOpen(true);
-    if (mapRef.current) {
-      const nextDimensions = {
-        width: Math.min(routePanelDimensions.width, mapRef.current.clientWidth),
-        height: Math.min(routePanelDimensions.height, mapRef.current.clientHeight),
-      };
-      setRoutePanelDimensions(nextDimensions);
-      setRoutePanelPosition({
-        x: Math.max(0, mapRef.current.clientWidth - nextDimensions.width - 22),
-        y: 22,
-      });
-    }
+    setRouteCalculated(false);
+    setNotice("Route calculation is not connected yet.");
   };
 
-  const layerName = MAP_LAYERS.find((layer) => layer.id === activeLayer)?.name ?? "Altitude Map";
+  const selectedLayer = terrainLayer(activeLayer);
+  const layerName = `${selectedLayer.name}${selectedLayer.scientificDataAvailable ? "" : " · palette preview"}`;
 
   return (
-    <main className="app-shell">
-      <aside className="sidebar">
+    <main className={`app-shell ${narrowLayout && sidebarOpen ? "sidebar-is-open" : ""}`}>
+      {narrowLayout && (
+        <button
+          className="sidebar-toggle"
+          ref={sidebarToggleRef}
+          type="button"
+          aria-controls="mission-controls"
+          aria-expanded={narrowLayout ? sidebarOpen : true}
+          onClick={() => setSidebarOpen((open) => !open)}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d={sidebarOpen ? "M6 6l12 12M6 18 18 6" : "M4 6h16M4 12h16M4 18h16"} />
+          </svg>
+          {sidebarOpen ? "Close controls" : "Mission controls"}
+        </button>
+      )}
+      <aside
+        id="mission-controls"
+        className="sidebar"
+        aria-label="Mission controls"
+        inert={narrowLayout && !sidebarOpen}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && narrowLayout) {
+            setSidebarOpen(false);
+            sidebarToggleRef.current?.focus();
+          }
+        }}
+      >
         <header className="brand">
           <div className="brand-mark" aria-hidden="true">
             <span />
@@ -358,11 +313,11 @@ function App() {
         </header>
 
         <div className="sidebar-body">
-          <section className="setup-section">
+          <section className="setup-section" aria-label="Starting Point">
             <div className="section-heading">
               <div>
                 <h2>Starting Point</h2>
-                <p>Base coordinates</p>
+                <p>Base coordinates · X east / Y south (%)</p>
               </div>
             </div>
             <CoordinateFields
@@ -371,14 +326,16 @@ function App() {
                 setRouteCalculated(false);
               }}
               value={base}
+              error={coordinateError(base, validation.base)}
+              id="base"
             />
           </section>
 
-          <section className="setup-section">
+          <section className="setup-section" aria-label="Destination">
             <div className="section-heading">
               <div>
                 <h2>Destination</h2>
-                <p>Target coordinates</p>
+                <p>Target coordinates · 0–100% of DTM</p>
               </div>
             </div>
             <CoordinateFields
@@ -387,10 +344,17 @@ function App() {
                 setRouteCalculated(false);
               }}
               value={destination}
+              error={coordinateError(destination, validation.destination)}
+              id="destination"
             />
             <button
               className={`select-on-map ${selectingDestination ? "is-active" : ""}`}
-              onClick={() => setSelectingDestination((current) => !current)}
+              disabled={!validation.ready}
+              onClick={() => {
+                setNotice("");
+                setSelectingDestination((current) => !current);
+                if (narrowLayout) setSidebarOpen(false);
+              }}
               type="button"
             >
               <CrosshairIcon />
@@ -413,11 +377,39 @@ function App() {
             </button>
 
             {layersOpen && (
-              <div className="layer-options">
+              <div
+                className="layer-options"
+                role="radiogroup"
+                aria-label="Map Layers"
+                onKeyDown={(event) => {
+                  const radios = [
+                    ...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]'),
+                  ];
+                  const index = radios.indexOf(document.activeElement as HTMLButtonElement);
+                  if (index < 0) return;
+                  const next =
+                    event.key === "Home"
+                      ? 0
+                      : event.key === "End"
+                        ? radios.length - 1
+                        : ["ArrowRight", "ArrowDown"].includes(event.key)
+                          ? (index + 1) % radios.length
+                          : ["ArrowLeft", "ArrowUp"].includes(event.key)
+                            ? (index + radios.length - 1) % radios.length
+                            : -1;
+                  if (next < 0) return;
+                  event.preventDefault();
+                  radios[next].focus();
+                  radios[next].click();
+                }}
+              >
                 {MAP_LAYERS.map((layer) => (
                   <button
                     className={`layer-option ${activeLayer === layer.id ? "is-selected" : ""}`}
                     key={layer.id}
+                    role="radio"
+                    aria-checked={activeLayer === layer.id}
+                    tabIndex={activeLayer === layer.id ? 0 : -1}
                     onClick={() => setActiveLayer(layer.id)}
                     type="button"
                   >
@@ -438,7 +430,7 @@ function App() {
             <span />
             <p>
               SYSTEM READY
-              <small>Local route preview</small>
+              <small>{validation.ready ? "Terrain explorer" : "Loading terrain"}</small>
             </p>
           </div>
           <button className="calculate-button" onClick={calculateRoute} type="button">
@@ -452,47 +444,34 @@ function App() {
 
       <section
         aria-label={`${layerName} of Phlegra Montes`}
-        className={`map-area layer-${activeLayer} ${
-          selectingDestination ? "is-selecting" : ""
-        } ${dragStart ? "is-dragging" : ""}`}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={() => setDragStart(null)}
-        onWheel={handleWheel}
+        className={`map-area layer-altitude ${selectingDestination ? "is-selecting" : ""}`}
         ref={mapRef}
       >
-        <div
-          className="map-transform"
-          style={{
-            transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
-          }}
-        >
-          <img
-            alt="Rocky, rust-toned aerial terrain used as a placeholder Mars map"
-            className="terrain-image"
-            draggable="false"
-            src={terrainImage}
+        <Suspense fallback={<p className="dashboard-terrain-status">Loading 3D terrain…</p>}>
+          <DashboardTerrain
+            layer={activeLayer}
+            base={base}
+            destination={destination}
+            selecting={selectingDestination}
+            cameraRef={cameraRef}
+            onSelect={onDestinationSelect}
+            onZoom={setZoom}
+            onValidation={setValidation}
           />
-          <div className="map-toning" />
-          <div className="contour-lines" />
-          {routeCalculated && <RouteLine start={basePoint} end={destinationPoint} />}
-          <Marker kind="base" point={basePoint} />
-          <Marker kind="destination" point={destinationPoint} />
-        </div>
+        </Suspense>
 
         <div className="map-vignette" />
         <div className="region-chip">
           <span className="region-kicker">SELECTED REGION</span>
           <strong>Phlegra Montes</strong>
-          <span className="region-coordinates">30.8°N · 163.4°E</span>
+          <span className="region-coordinates">35.495°N · 163.621°E</span>
         </div>
 
         <div className="map-meta">
           <CompassMark />
           <span>
             MARS / MRO
-            <small>{Math.round(84 / zoom)} M / PX</small>
+            <small>1.004 M / SOURCE PX</small>
           </span>
         </div>
 
@@ -545,7 +524,7 @@ function App() {
               <div className="route-panel-body">
                 <div className="route-success">
                   <span />
-                  Route calculated
+                  Route information
                 </div>
                 <div className="route-metrics">
                   <div className="metric metric--risk">
@@ -561,7 +540,7 @@ function App() {
                       <strong>—</strong>
                     </div>
                   ))}
-                  <p>Awaiting NASA terrain model output</p>
+                  <p>Route calculation is not connected yet.</p>
                 </div>
               </div>
             )}
@@ -589,8 +568,8 @@ function App() {
         >
           <button
             aria-label="Zoom in"
-            disabled={zoom >= 2.2}
-            onClick={() => adjustZoom(0.2)}
+            disabled={!validation.ready}
+            onClick={() => cameraRef.current?.zoom(0.8)}
             type="button"
           >
             +
@@ -598,8 +577,8 @@ function App() {
           <span />
           <button
             aria-label="Zoom out"
-            disabled={zoom <= 1}
-            onClick={() => adjustZoom(-0.2)}
+            disabled={!validation.ready}
+            onClick={() => cameraRef.current?.zoom(1.25)}
             type="button"
           >
             −
@@ -607,7 +586,12 @@ function App() {
         </div>
 
         <div className="zoom-readout">{Math.round(zoom * 100)}%</div>
-        <div className="photo-credit">Terrain photo: Suganth / Unsplash</div>
+        <div className="photo-credit">NASA HiRISE · Phlegra Montes DTM</div>
+        {notice && (
+          <p className="map-notice" role="status">
+            {notice}
+          </p>
+        )}
       </section>
     </main>
   );

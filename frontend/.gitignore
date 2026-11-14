@@ -8,3 +8,8 @@ dist/
 !.env.example
 .DS_Store
 Thumbs.db
+# Generated numerical terrain stays local; commit only its preparation code.
+/public/terrain/
+*.[iI][mM][gG]
+*.[tT][iI][fF]
+*.[tT][iI][fF][fF]
