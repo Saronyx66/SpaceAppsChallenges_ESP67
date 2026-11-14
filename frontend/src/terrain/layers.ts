@@ -15,7 +15,7 @@ export const TERRAIN_LAYERS = [
     id: "thermal",
     name: "Thermal Emission",
     mode: 1,
-    detail: "Data unavailable · palette preview only",
+    detail: "Scientific data unavailable",
     scientificDataAvailable: false,
     palette: ["#280b53", "#ab2d88", "#f87536", "#fff1a0"],
   },
@@ -23,8 +23,12 @@ export const TERRAIN_LAYERS = [
     id: "dust",
     name: "Surface Dust Cover Index",
     mode: 2,
-    detail: "Data unavailable · palette preview only",
+    detail: "Scientific data unavailable",
     scientificDataAvailable: false,
+    // Preserve the source's green -> yellow order. The official TES DCI key
+    // puts green at higher DCI (less dust) than yellow (lower DCI/more dust).
+    // The local RGB PNG does NOT retain calibrated numerical DCI samples.
+    // https://mars.asu.edu/data/tes_ruffdust/large/tes_ruffdust_label.png
     palette: ["#30e65a", "#9dfc50", "#d9ff51", "#fff878"],
   },
 ] as const;

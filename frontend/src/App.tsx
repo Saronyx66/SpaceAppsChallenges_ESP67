@@ -270,7 +270,7 @@ function App() {
   };
 
   const selectedLayer = terrainLayer(activeLayer);
-  const layerName = `${selectedLayer.name}${selectedLayer.scientificDataAvailable ? "" : " · palette preview"}`;
+  const layerName = selectedLayer.name;
 
   return (
     <main className={`app-shell ${narrowLayout && sidebarOpen ? "sidebar-is-open" : ""}`}>
