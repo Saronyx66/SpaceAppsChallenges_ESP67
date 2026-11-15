@@ -12,6 +12,7 @@ import {
   TerrainBoundary,
   TerrainControls,
   TerrainLights,
+  STRIP_TILT,
   type TerrainCamera,
 } from "./TerrainScene";
 import type { MapCoordinates, TerrainSurface } from "./surface";
@@ -172,7 +173,7 @@ function TerrainGrid({ meta }: { meta: WholeMetadata }) {
   useEffect(() => () => geometry.dispose(), [geometry]);
 
   return (
-    <lineSegments geometry={geometry} renderOrder={10}>
+    <lineSegments geometry={geometry} renderOrder={10} rotation={[0, STRIP_TILT, 0]}>
       <lineBasicMaterial
         color="#f5d6a0"
         depthTest={false}

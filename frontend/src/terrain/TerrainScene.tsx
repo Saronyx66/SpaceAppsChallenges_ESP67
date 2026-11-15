@@ -5,6 +5,9 @@ import { PerspectiveCamera, Vector3 } from "three";
 import type { WholeMetadata } from "./whole";
 
 
+// The valid footprint is tilted ~6.4 deg from the raster axes (measured: 7.0 deg left
+// edge, 5.7 deg right edge). 2D view rotates the camera by this angle so it sits flat.
+export const STRIP_TILT = (6.4 * Math.PI) / 180;
 export type TerrainCamera = {
   zoom: (factor: number) => void;
   setZoom: (scale: number) => void;
@@ -54,7 +57,7 @@ export function TerrainControls({
   useEffect(() => {
     if (gl.capabilities.maxTextureSize < 8192)
       throw Error("The terrain viewer needs 8192-pixel texture support.");
-    if (view === "2d") camera.up.set(-1, 0, 0);
+    if (view === "2d") camera.up.set(-Math.cos(STRIP_TILT), 0, Math.sin(STRIP_TILT));
     else camera.up.set(0, 1, 0);
     const orbit = new OrbitControls(camera, gl.domElement);
     controls.current = orbit;
@@ -117,11 +120,11 @@ export function TerrainControls({
     orbit.enableRotate = view === "3d";
     const right =
       view === "2d"
-        ? new Vector3(0, 0, -1)
+        ? new Vector3(-Math.sin(STRIP_TILT), 0, -Math.cos(STRIP_TILT))
         : new Vector3().crossVectors(new Vector3(0, 1, 0), direction).normalize();
     const up =
         view === "2d"
-          ? new Vector3(-1, 0, 0)
+          ? new Vector3(-Math.cos(STRIP_TILT), 0, Math.sin(STRIP_TILT))
           : new Vector3().crossVectors(direction, right).normalize(),
       tanV = Math.tan((21 * Math.PI) / 180);
     let distance = 0;
