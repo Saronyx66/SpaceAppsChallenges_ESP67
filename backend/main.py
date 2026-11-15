@@ -298,4 +298,5 @@ def main():
     return motor_cmds
 
 
-motor_cmds = main()
+if __name__ == "__main__":
+    motor_cmds = main()
