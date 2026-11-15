@@ -8,9 +8,9 @@ from rasterio.enums import Resampling
 from matplotlib.colors import LightSource, rgb_to_hsv
 from scipy.spatial import cKDTree
 
-DTM = "../../DTEEC_060707_2160_060773_2160_A01.IMG"
-THEMIS_PNG = "themis_day_colored.png"
-DUST_PNG = "dust_dci_dtm_extent_smooth.png"
+DTM = "/content/DTEEC_060707_2160_060773_2160_A01.IMG"
+THEMIS_PNG = "/content/themis_day_colored.png"
+DUST_PNG = "/content/dust_dci_dtm_extent_smooth.png"
 START, GOAL = (2000, 500), (3000, 500)
 
 SCALE = 0.001
@@ -298,4 +298,4 @@ def main():
     return motor_cmds
 
 
-cmds = main()
+motor_cmds = main()
