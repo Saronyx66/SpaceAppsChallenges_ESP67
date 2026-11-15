@@ -1173,6 +1173,45 @@
   cursor: nesw-resize;
 }
 
+.view-toggle {
+  position: absolute;
+  z-index: 12;
+  right: 24px;
+  bottom: 90px;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.21);
+  background: rgba(18, 20, 18, 0.76);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(12px);
+}
+
+.view-toggle button {
+  width: 52px;
+  height: 36px;
+  border: 0;
+  color: rgba(255, 255, 255, 0.7);
+  background: transparent;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.view-toggle button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.view-toggle button.is-active {
+  color: #fff;
+  background: rgba(255, 140, 40, 0.28);
+}
+
+.view-toggle button:disabled {
+  color: rgba(255, 255, 255, 0.22);
+  cursor: default;
+}
+
 .zoom-controls {
   position: absolute;
   z-index: 12;
@@ -1313,6 +1352,10 @@
   .zoom-controls {
     right: 16px;
     bottom: 24px;
+  }
+  .view-toggle {
+    right: 16px;
+    bottom: 90px;
   }
   .zoom-readout {
     right: 140px;

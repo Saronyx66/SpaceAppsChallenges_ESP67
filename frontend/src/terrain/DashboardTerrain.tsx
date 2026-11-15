@@ -20,6 +20,7 @@ type Props = {
   onRouteDisplayed: (route: DisplayedRoute) => void;
   onRouteError: (message: string) => void;
   layer: TerrainLayerId;
+  view: "3d" | "2d";
   base: MapCoordinates;
   destination: MapCoordinates;
   selecting: boolean;
@@ -192,6 +193,7 @@ export default function DashboardTerrain(props: Props) {
             {renderedRoute?.data && <RouteOverlay positions={renderedRoute.data.positions} />}
             <TerrainControls
               meta={terrain.meta}
+              view={props.view}
               cameraRef={props.cameraRef}
               onZoom={props.onZoom}
             />

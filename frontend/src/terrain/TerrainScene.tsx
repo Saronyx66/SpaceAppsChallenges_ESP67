@@ -4,6 +4,8 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Vector3 } from "three";
 import type { WholeMetadata } from "./whole";
 
+
+const STRIP_TILT = (6.4 * Math.PI) / 180;
 export type TerrainCamera = { zoom: (factor: number) => void };
 export class TerrainBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   state: { error: string | null } = { error: null };
@@ -33,7 +35,9 @@ export function TerrainControls({
   meta,
   cameraRef,
   onZoom,
+  view = "3d",
 }: {
+  view?: "3d" | "2d";
   reset?: number;
   meta: WholeMetadata;
   cameraRef?: RefObject<TerrainCamera | null>;
@@ -87,7 +91,16 @@ export function TerrainControls({
     const width = meta.width * meta.resolution[0],
       height = meta.height * meta.resolution[1];
     const aspect = size.width / Math.max(1, size.height),
-      direction = new Vector3(0.85, 0.72, 0.26).normalize();
+      direction =
+        view === "2d"
+          ? 
+            new Vector3(
+              0.001 * Math.cos(STRIP_TILT),
+              1,
+              -0.001 * Math.sin(STRIP_TILT),
+            ).normalize()
+          : new Vector3(0.85, 0.72, 0.26).normalize();
+    orbit.enableRotate = view === "3d";
     const right = new Vector3().crossVectors(new Vector3(0, 1, 0), direction).normalize();
     const up = new Vector3().crossVectors(direction, right).normalize(),
       tanV = Math.tan((21 * Math.PI) / 180);
@@ -102,11 +115,11 @@ export function TerrainControls({
             corner.dot(direction) + Math.abs(corner.dot(up)) / tanV,
           );
         }
-    fitDistance.current = distance * 1.13;
+    fitDistance.current = distance * (view === "2d" ? 1.03 : 1.13);
     camera.position.copy(direction.multiplyScalar(fitDistance.current));
     orbit.target.set(0, 0, 0);
     orbit.update();
     invalidate();
-  }, [camera, invalidate, reset, size.width, size.height, meta]);
+  }, [camera, invalidate, reset, size.width, size.height, meta, view]);
   return null;
 }

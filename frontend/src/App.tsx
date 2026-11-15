@@ -160,6 +160,7 @@ function App() {
   } | null>(null);
   const [selectingDestination, setSelectingDestination] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
   const cameraRef = useRef<TerrainCamera | null>(null);
   const [validation, setValidation] = useState({ base: false, destination: false, ready: false });
   const [notice, setNotice] = useState("");
@@ -584,6 +585,7 @@ function App() {
             onRouteDisplayed={onRouteDisplayed}
             onRouteError={onRouteError}
             layer={activeLayer}
+            view={viewMode}
             base={base}
             destination={destination}
             selecting={selectingDestination}
@@ -716,6 +718,26 @@ function App() {
               )}
           </aside>
         )}
+
+        <div
+          className="view-toggle"
+          role="group"
+          aria-label="Map view mode"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {(["3d", "2d"] as const).map((mode) => (
+            <button
+              aria-pressed={viewMode === mode}
+              className={viewMode === mode ? "is-active" : ""}
+              disabled={!validation.ready}
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              type="button"
+            >
+              {mode.toUpperCase()}
+            </button>
+          ))}
+        </div>
 
         <div
           className="zoom-controls"
