@@ -185,7 +185,7 @@ def to_motor_commands(cmds):
             ms = arc / wheel_speed_mps(TURN_PWM) * 1000
             out.append(motor_step(TURN_PWM, right, not right, 1, ms))
         else:
-            ms = c["robot_distance_m"] / wheel_speed_mps(DRIVE_PWM) * 1000
+            ms = c["mars_distance_m"] * SCALE / wheel_speed_mps(DRIVE_PWM) * 1000
             out.append(motor_step(DRIVE_PWM, 1, 1, 1, ms))
         out.append(motor_step(0, 0, 0, 1, PAUSE_MS))
     return out
