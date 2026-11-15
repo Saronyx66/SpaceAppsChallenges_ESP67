@@ -280,4 +280,5 @@ def main():
     return cmds
 
 
-cmds = main()
+if __name__ == "__main__":
+    cmds = main()

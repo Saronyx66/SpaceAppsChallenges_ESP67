@@ -12,8 +12,13 @@ import type { MapCoordinates, TerrainSurface } from "./surface";
 import type { TerrainLayerId } from "./layers";
 import type { wholeMaterial } from "./whole";
 import { LayerLegend } from "./LayerLegend";
+import { drapeSavedRoute, type SavedRoute, type DisplayedRoute } from "./savedRoute";
+import { RouteOverlay } from "./RouteOverlay";
 
 type Props = {
+  route: SavedRoute | null;
+  onRouteDisplayed: (route: DisplayedRoute) => void;
+  onRouteError: (message: string) => void;
   layer: TerrainLayerId;
   base: MapCoordinates;
   destination: MapCoordinates;
@@ -133,6 +138,20 @@ function DestinationPicker({
 }
 export default function DashboardTerrain(props: Props) {
   const { terrain, error, status } = useWholeTerrain();
+  const renderedRoute = useMemo(() => {
+    if (!props.route || !terrain) return null;
+    try {
+      return { data: drapeSavedRoute(props.route, terrain.locations) };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "The saved route could not be displayed.",
+      };
+    }
+  }, [props.route, terrain]);
+  useEffect(() => {
+    if (renderedRoute?.data) props.onRouteDisplayed(renderedRoute.data);
+    else if (renderedRoute?.error) props.onRouteError(renderedRoute.error);
+  }, [renderedRoute, props.onRouteDisplayed, props.onRouteError]);
   const markers = useRef<(HTMLDivElement | null)[]>([]);
   useEffect(() => {
     props.onValidation({
@@ -148,6 +167,7 @@ export default function DashboardTerrain(props: Props) {
       data-geometry-id={terrain?.geometry.uuid}
       data-material-id={terrain?.surface.material.uuid}
       data-layer={props.layer}
+      data-route-segments={renderedRoute?.data?.segments ?? 0}
     >
       {error ? (
         <p className="dashboard-terrain-status" role="alert">
@@ -169,6 +189,7 @@ export default function DashboardTerrain(props: Props) {
             <TerrainLights />
             <SurfaceColoring surface={terrain.surface} layer={props.layer} />
             <mesh geometry={terrain.geometry} material={terrain.surface.material} dispose={null} />
+            {renderedRoute?.data && <RouteOverlay positions={renderedRoute.data.positions} />}
             <TerrainControls
               meta={terrain.meta}
               cameraRef={props.cameraRef}

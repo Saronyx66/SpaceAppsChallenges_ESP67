@@ -5,6 +5,12 @@ import { test } from "node:test";
 import { Ray, Vector3 } from "three";
 import { TerrainSurface } from "./surface.ts";
 import type { WholeMetadata } from "./whole";
+import {
+  parseSavedRoute,
+  drapeSavedRoute,
+  parseRouteSummary,
+  formatRouteDistance,
+} from "./savedRoute.ts";
 
 // Tests use the real local numerical bundle, never synthetic terrain.
 const bundle = gunzipSync(
@@ -21,6 +27,9 @@ const mask = new Uint8Array(
   meta.maskBytes,
 );
 const surface = new TerrainSurface(meta, grid, mask, 8);
+const pythonRoute = JSON.parse(
+  readFileSync(new URL("../../../backend/route_threejs.json", import.meta.url), "utf8"),
+);
 
 test("rejects empty, nonnumeric, out-of-range and native NoData coordinates", () => {
   for (const p of [
@@ -78,4 +87,98 @@ test("a ray over native NoData does not hit the invisible support mesh", () => {
     surface.intersect(new Ray(new Vector3(p.x, 1000, p.z), new Vector3(0, -1, 0))),
     null,
   );
+});
+
+test("Python route mapping accounts for resampling cell centers and IMG-to-TIFF border offsets", () => {
+  const route = parseSavedRoute(pythonRoute);
+  const first = pythonRoute.points[0];
+  assert.equal(route.points[0].col, ((first.col + 0.5) * 6196) / pythonRoute.grid.cols - 2.5);
+  assert.equal(route.points[0].row, ((first.row + 0.5) * 14478) / pythonRoute.grid.rows - 1.5);
+  assert.ok(Math.abs(route.points[0].col - first.u * (meta.width - 1)) > 0.1);
+});
+
+test("saved route drapes on the real terrain, keeps endpoints and contains no invalid values", () => {
+  const result = drapeSavedRoute(parseSavedRoute(pythonRoute), surface);
+  assert.ok(result.segments > pythonRoute.points.length);
+  assert.equal(result.clippedSamples, 0);
+  assert.ok(result.positions.every(Number.isFinite));
+  const start = surface.point(result.base)!,
+    end = surface.point(result.destination)!;
+  assert.ok(start && end);
+  const first = result.positions.slice(0, 3),
+    last = result.positions.slice(-3);
+  for (const [actual, expected] of [
+    [first, start],
+    [last, end],
+  ] as const) {
+    assert.ok(Math.abs(actual[0] - expected.x) < 0.001);
+    assert.ok(Math.abs(actual[1] - expected.y - 2) < 0.001);
+    assert.ok(Math.abs(actual[2] - expected.z) < 0.001);
+  }
+  for (let i = 0; i < result.positions.length; i += 3) {
+    const col = result.positions[i] / meta.resolution[0] + (meta.width - 1) / 2;
+    const row = result.positions[i + 2] / meta.resolution[1] + (meta.height - 1) / 2;
+    assert.ok(surface.validPixel(col, row));
+  }
+});
+
+test("saved route rejects malformed payloads, unrecognized grids and invalid endpoints", () => {
+  for (const value of [
+    null,
+    {},
+    { ...pythonRoute, points: [] },
+    { ...pythonRoute, grid: { ...pythonRoute.grid, rows: 100 } },
+    { ...pythonRoute, points: [{ row: -1, col: 500 }, pythonRoute.points[1]] },
+  ])
+    assert.throws(() => parseSavedRoute(value));
+  assert.throws(
+    () =>
+      drapeSavedRoute(
+        {
+          points: [
+            { col: 0, row: 0 },
+            { col: 3000, row: 7000 },
+          ],
+        },
+        surface,
+      ),
+    /endpoint/,
+  );
+});
+
+test("backend route summary is preserved through parsing and terrain draping", () => {
+  const summary = {
+    risk_index: 3.6,
+    total_distance_m: 20.1,
+    est_time_h: 0.01,
+    est_time_hms: "0h 00m",
+  };
+  const expected = { riskIndex: 3.6, distanceM: 20.1, estimatedTime: "0h 00m" };
+  const parsed = parseSavedRoute({ ...pythonRoute, summary });
+  assert.deepEqual(parsed.summary, expected);
+  assert.deepEqual(drapeSavedRoute(parsed, surface).summary, expected);
+});
+
+test("missing or invalid summary metrics remain unavailable rather than fabricated", () => {
+  assert.equal(parseRouteSummary(undefined), null);
+  assert.deepEqual(
+    parseRouteSummary({
+      risk_index: Infinity,
+      total_distance_m: -5,
+      est_time_h: NaN,
+      est_time_hms: "unknown",
+    }),
+    { riskIndex: null, distanceM: null, estimatedTime: null },
+  );
+  assert.deepEqual(parseRouteSummary({ risk_index: 11, est_time_h: 0.25 }), {
+    riskIndex: null,
+    distanceM: null,
+    estimatedTime: "0.25 h",
+  });
+});
+
+test("route distance formatting converts units without changing the backend value", () => {
+  assert.equal(formatRouteDistance(null), "Unavailable");
+  assert.equal(formatRouteDistance(20.1), "20.1 m");
+  assert.equal(formatRouteDistance(1234.5), "1.23 km");
 });

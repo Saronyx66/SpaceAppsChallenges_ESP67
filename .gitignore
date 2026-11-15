@@ -1,0 +1,15 @@
+# Local configuration and Python environments
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Keep raw scientific terrain outside the repository (case insensitive).
+*.[iI][mM][gG]
+*.[tT][iI][fF]
+*.[tT][iI][fF][fF]
+
+# Backend PNG inputs are intentionally versioned; do not ignore images.
