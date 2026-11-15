@@ -11,6 +11,7 @@ from threading import Lock
 import numpy as np
 import rasterio
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 from rasterio.windows import Window
 from dotenv import load_dotenv
@@ -153,3 +154,9 @@ def calculate_route(request: RouteRequest):
         raise HTTPException(500,"Python could not calculate this route.") from error
     finally:
         _route_lock.release()
+
+@app.get("/api/motor_commands")
+def get_motor_commands():
+    if not MOTOR_COMMANDS_FILE.exists():
+        raise HTTPException(404, "no route computed yet")
+    return FileResponse(MOTOR_COMMANDS_FILE)
