@@ -14,9 +14,9 @@ DUST_PNG = "dust_dci_dtm_extent_smooth.png"
 START, GOAL = (2000, 500), (3000, 500)
 
 SCALE = 0.001
-WHEEL_DIAMETER_M = 0.065
-TRACK_WIDTH_M = 0.15
 START_HEADING_DEG = 0.0
+DRIVE_PWM = 180
+TURN_PWM = 150
 WALK_SPEED_KMH = 2.0
 
 
@@ -142,16 +142,11 @@ def wrap(a):
     return (a + 180) % 360 - 180
 
 
-def wheel_deg(dist_m):
-    return round(float(dist_m / (np.pi * WHEEL_DIAMETER_M) * 360), 1)
-
-
-def command(action, angle, heading, mars_m, left, right):
+def command(action, angle, heading, mars_m):
     return {"action": action, "angle_deg": round(float(angle), 1),
             "heading_deg": round(float(heading), 1),
             "mars_distance_m": round(float(mars_m), 1),
-            "robot_distance_m": round(float(mars_m * SCALE), 3),
-            "left_wheel_deg": float(left), "right_wheel_deg": float(right)}
+            "robot_distance_m": round(float(mars_m * SCALE), 3)}
 
 
 def to_commands(waypoints, res):
@@ -161,13 +156,34 @@ def to_commands(waypoints, res):
         target = np.degrees(np.arctan2(dc, -dr)) % 360
         turn = wrap(target - heading)
         if abs(turn) >= 0.5:
-            w = wheel_deg(np.radians(abs(turn)) * TRACK_WIDTH_M / 2) * np.sign(turn)
-            cmds.append(command("turn", turn, target, 0, w, -w))
+            cmds.append(command("turn", turn, target, 0))
         heading = target
         mars_m = np.hypot(dr, dc) * res
-        w = wheel_deg(mars_m * SCALE)
-        cmds.append(command("forward", 0, target, mars_m, w, w))
+        cmds.append(command("forward", 0, target, mars_m))
     return cmds
+
+
+def motor_step(speed, left_on, right_on, direction):
+    return {"speed": int(speed), "left_on": int(left_on),
+            "right_on": int(right_on), "direction": int(direction)}
+
+
+def to_motor_commands(cmds):
+    out = []
+    for c in cmds:
+        if c["action"] == "turn":
+            right = c["angle_deg"] > 0
+            out.append(motor_step(TURN_PWM, right, not right, 1))
+        else:
+            out.append(motor_step(DRIVE_PWM, 1, 1, 1))
+        out.append(motor_step(0, 0, 0, 1))
+    return out
+
+
+def export_motor_json(motor_cmds, path="motor_commands.json"):
+    with open(path, "w") as f:
+        json.dump(motor_cmds, f, indent=1)
+    return path
 
 
 def path_stats(path, z, slope, res):
@@ -220,8 +236,7 @@ def export_threejs(waypoints, cmds, z, res, slope, dust, warm, path="route_three
             "grid": {"rows": h, "cols": w, "res_m": res,
                      "width_m": (w - 1) * res, "height_m": (h - 1) * res,
                      "elev_min": float(np.nanmin(z)), "elev_max": float(np.nanmax(z))},
-            "robot": {"scale": SCALE, "wheel_diameter_m": WHEEL_DIAMETER_M,
-                      "track_width_m": TRACK_WIDTH_M, "start_heading_deg": START_HEADING_DEG},
+            "robot": {"scale": SCALE, "start_heading_deg": START_HEADING_DEG},
             "waypoints": [{"row": int(r), "col": int(c),
                            "x": (c - (w - 1) / 2) * res, "z": (r - (h - 1) / 2) * res,
                            "elev": float(z[r, c])} for r, c in waypoints],
@@ -263,21 +278,24 @@ def main():
         return
     waypoints = simplify(path, cost)
     cmds = to_commands(waypoints, res)
+    motor_cmds = to_motor_commands(cmds)
 
     print(f"{z.shape} {res:.2f} m/cell")
     print(path_stats(path, z, slope, res))
     print(f"{len(path)} cells -> {len(waypoints)} waypoints -> {len(cmds)} commands")
-    for c in cmds:
-        print(c)
+    for m in motor_cmds:
+        print(m)
 
-    out = export_threejs(waypoints, cmds, z, res, slope, dust, warm)
+    outs = [export_threejs(waypoints, cmds, z, res, slope, dust, warm),
+            export_motor_json(motor_cmds)]
     plot_route(z, path, waypoints)
     try:
         from google.colab import files
-        files.download(out)
+        for o in outs:
+            files.download(o)
     except ImportError:
-        print("saved", out)
-    return cmds
+        print("saved", outs)
+    return motor_cmds
 
 
-cmds = main()
+motor_cmds = main()
