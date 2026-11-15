@@ -24,6 +24,20 @@ const MAP_LAYERS = TERRAIN_LAYERS;
 
 const INITIAL_BASE = { x: "49.34593023", y: "45.99253794" };
 const INITIAL_DESTINATION = { x: "67.5", y: "34.8" };
+const MIN_ZOOM_SCALE = 0.1;
+const MAX_ZOOM_SCALE = 100;
+
+function zoomToSliderValue(zoom: number) {
+  const clamped = Math.max(MIN_ZOOM_SCALE, Math.min(MAX_ZOOM_SCALE, zoom));
+  return (
+    (Math.log(clamped / MIN_ZOOM_SCALE) / Math.log(MAX_ZOOM_SCALE / MIN_ZOOM_SCALE)) *
+    100
+  );
+}
+
+function sliderValueToZoom(value: number) {
+  return MIN_ZOOM_SCALE * (MAX_ZOOM_SCALE / MIN_ZOOM_SCALE) ** (value / 100);
+}
 
 function ChevronIcon({ open = false }: { open?: boolean }) {
   return (
@@ -160,8 +174,13 @@ function App() {
   } | null>(null);
   const [selectingDestination, setSelectingDestination] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [metersPerPixel, setMetersPerPixel] = useState(0);
   const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
   const cameraRef = useRef<TerrainCamera | null>(null);
+  const onTerrainZoom = useCallback((scale: number, metersPerPixel: number) => {
+    setZoom(scale);
+    setMetersPerPixel(metersPerPixel);
+  }, []);
   const [validation, setValidation] = useState({ base: false, destination: false, ready: false });
   const [notice, setNotice] = useState("");
   const [savedRoute, setSavedRoute] = useState<SavedRoute | null>(null);
@@ -591,7 +610,8 @@ function App() {
             selecting={selectingDestination}
             cameraRef={cameraRef}
             onSelect={onDestinationSelect}
-            onZoom={setZoom}
+            onZoom={onTerrainZoom}
+            metersPerPixel={metersPerPixel}
             onValidation={setValidation}
           />
         </Suspense>
@@ -600,14 +620,14 @@ function App() {
           <div className="route-loading-overlay" role="status" aria-live="polite" aria-busy="true">
             <div className="route-loading-card">
               <p className="route-loading-message">
-                Calculando ruta
+                Calculating route
                 <span className="route-loading-dots" aria-hidden="true">
                   <span>.</span>
                   <span>.</span>
                   <span>.</span>
                 </span>
               </p>
-              <small>El servicio está procesando el terreno.</small>
+              <small>The service is still processing the terrain. Please wait.</small>
             </div>
           </div>
         )}
@@ -739,31 +759,52 @@ function App() {
           ))}
         </div>
 
-        <div
-          className="zoom-controls"
-          aria-label="Map zoom controls"
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <button
-            aria-label="Zoom in"
-            disabled={!validation.ready}
-            onClick={() => cameraRef.current?.zoom(0.8)}
-            type="button"
+        <div className="zoom-control-group">
+          <div
+            className="zoom-scale-control"
+            onPointerDown={(event) => event.stopPropagation()}
           >
-            +
-          </button>
-          <span />
-          <button
-            aria-label="Zoom out"
-            disabled={!validation.ready}
-            onClick={() => cameraRef.current?.zoom(1.25)}
-            type="button"
-          >
-            −
-          </button>
-        </div>
+            <label htmlFor="map-zoom-scale">
+              <span>ZOOM</span>
+              <output>{Math.round(zoom * 100)}%</output>
+            </label>
+            <input
+              id="map-zoom-scale"
+              aria-label="Map zoom scale"
+              disabled={!validation.ready}
+              max={100}
+              min={0}
+              onChange={(event) => cameraRef.current?.setZoom(sliderValueToZoom(event.currentTarget.valueAsNumber))}
+              step={1}
+              type="range"
+              value={zoomToSliderValue(zoom)}
+            />
+          </div>
 
-        <div className="zoom-readout">{Math.round(zoom * 100)}%</div>
+          <div
+            className="zoom-controls"
+            aria-label="Map zoom controls"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <button
+              aria-label="Zoom in"
+              disabled={!validation.ready}
+              onClick={() => cameraRef.current?.zoom(0.8)}
+              type="button"
+            >
+              +
+            </button>
+            <span />
+            <button
+              aria-label="Zoom out"
+              disabled={!validation.ready}
+              onClick={() => cameraRef.current?.zoom(1.25)}
+              type="button"
+            >
+              −
+            </button>
+          </div>
+        </div>
         <div className="photo-credit">NASA HiRISE · Phlegra Montes DTM</div>
         {notice && (
           <p className="map-notice" role="status">

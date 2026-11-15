@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { ACESFilmicToneMapping, Raycaster, Vector2 } from "three";
+import {
+  ACESFilmicToneMapping,
+  BufferGeometry,
+  Float32BufferAttribute,
+  Raycaster,
+  Vector2,
+} from "three";
 import { useWholeTerrain } from "./useWholeTerrain";
 import {
   TerrainBoundary,
@@ -10,8 +16,8 @@ import {
 } from "./TerrainScene";
 import type { MapCoordinates, TerrainSurface } from "./surface";
 import type { TerrainLayerId } from "./layers";
-import type { wholeMaterial } from "./whole";
-import { LayerLegend } from "./LayerLegend";
+import type { wholeMaterial, WholeMetadata } from "./whole";
+import { LayerLegend, MapScaleBar } from "./LayerLegend";
 import { drapeSavedRoute, type SavedRoute, type DisplayedRoute } from "./savedRoute";
 import { RouteOverlay } from "./RouteOverlay";
 
@@ -26,7 +32,8 @@ type Props = {
   selecting: boolean;
   cameraRef: RefObject<TerrainCamera | null>;
   onSelect: (value: MapCoordinates | null) => void;
-  onZoom: (zoom: number) => void;
+  onZoom: (zoom: number, metersPerPixel: number) => void;
+  metersPerPixel: number;
   onValidation: (valid: { base: boolean; destination: boolean; ready: boolean }) => void;
 };
 function SurfaceColoring({
@@ -137,6 +144,47 @@ function DestinationPicker({
   }, [gl, camera, selecting, onSelect, locations]);
   return null;
 }
+
+function TerrainGrid({ meta }: { meta: WholeMetadata }) {
+  const geometry = useMemo(() => {
+    const width = (meta.width - 1) * meta.resolution[0];
+    const height = (meta.height - 1) * meta.resolution[1];
+    const halfWidth = width / 2;
+    const halfHeight = height / 2;
+    const columns = Math.max(1, Math.round(width / 1000));
+    const rows = Math.max(1, Math.round(height / (width / columns)));
+    const positions: number[] = [];
+
+    for (let column = 0; column <= columns; column++) {
+      const x = -halfWidth + (width * column) / columns;
+      positions.push(x, 0, -halfHeight, x, 0, halfHeight);
+    }
+    for (let row = 0; row <= rows; row++) {
+      const z = -halfHeight + (height * row) / rows;
+      positions.push(-halfWidth, 0, z, halfWidth, 0, z);
+    }
+
+    const result = new BufferGeometry();
+    result.setAttribute("position", new Float32BufferAttribute(positions, 3));
+    return result;
+  }, [meta]);
+
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
+  return (
+    <lineSegments geometry={geometry} renderOrder={10}>
+      <lineBasicMaterial
+        color="#f5d6a0"
+        depthTest={false}
+        depthWrite={false}
+        opacity={0.72}
+        toneMapped={false}
+        transparent
+      />
+    </lineSegments>
+  );
+}
+
 export default function DashboardTerrain(props: Props) {
   const { terrain, error, status } = useWholeTerrain();
   const renderedRoute = useMemo(() => {
@@ -184,12 +232,18 @@ export default function DashboardTerrain(props: Props) {
             frameloop="demand"
             dpr={[1, 1.5]}
             camera={{ fov: 42, near: 1, far: 200000 }}
-            gl={{ antialias: true, toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.15 }}
+            gl={{
+              alpha: true,
+              antialias: true,
+              toneMapping: ACESFilmicToneMapping,
+              toneMappingExposure: 1.15,
+            }}
             fallback={<p role="alert">WebGL2 is required for this terrain.</p>}
           >
             <TerrainLights />
             <SurfaceColoring surface={terrain.surface} layer={props.layer} />
             <mesh geometry={terrain.geometry} material={terrain.surface.material} dispose={null} />
+            {props.view === "2d" && <TerrainGrid meta={terrain.meta} />}
             {renderedRoute?.data && <RouteOverlay positions={renderedRoute.data.positions} />}
             <TerrainControls
               meta={terrain.meta}
@@ -211,7 +265,14 @@ export default function DashboardTerrain(props: Props) {
           </Canvas>
         </TerrainBoundary>
       )}
-      {terrain && !error && <LayerLegend layer={props.layer} meta={terrain.meta} />}
+      {terrain && !error && (
+        <div className={`map-data-overlays ${props.view === "2d" ? "has-map-scale" : ""}`}>
+          {props.view === "2d" && props.metersPerPixel > 0 && (
+            <MapScaleBar metersPerPixel={props.metersPerPixel} />
+          )}
+          <LayerLegend layer={props.layer} meta={terrain.meta} />
+        </div>
+      )}
       {(["base", "destination"] as const).map((kind, index) => (
         <div
           hidden={!terrain}

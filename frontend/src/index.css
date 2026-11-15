@@ -460,7 +460,7 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: #151719;
+  background: #090b10 url("/Tycho%20Star%20Map.jpg") center / cover no-repeat;
 }
 .dashboard-terrain > div:has(canvas) {
   position: absolute !important;
@@ -566,9 +566,6 @@
 .map-meta,
 .selection-prompt,
 .photo-credit,
-.zoom-readout {
-  pointer-events: none;
-}
 .sidebar-body {
   overscroll-behavior: contain;
 }
@@ -577,10 +574,6 @@
 }
 
 .layer-legend {
-  position: absolute;
-  z-index: 11;
-  left: 24px;
-  bottom: 32px;
   width: 260px;
   max-width: calc(100% - 32px);
   padding: 11px 13px;
@@ -589,14 +582,82 @@
   background: rgba(21, 21, 27, 0.92);
   pointer-events: none;
 }
+.map-data-overlays {
+  position: absolute;
+  z-index: 11;
+  left: 24px;
+  bottom: 32px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: none;
+}
+.map-data-overlays .layer-legend {
+  position: relative;
+  inset: auto;
+  flex: 0 1 260px;
+}
+.map-scale-bar {
+  min-width: 128px;
+  padding: 10px 12px;
+  border: 1px solid var(--sidebar-border);
+  color: var(--text-primary);
+  background: rgba(21, 21, 27, 0.92);
+}
+.map-scale-bar strong {
+  display: block;
+  font: 600 12px "IBM Plex Mono", monospace;
+}
+.map-scale-bar-line {
+  position: relative;
+  display: block;
+  height: 9px;
+  max-width: 110px;
+  margin-top: 3px;
+  border-bottom: 2px solid var(--text-primary);
+}
+.map-scale-bar-line::before,
+.map-scale-bar-line::after {
+  position: absolute;
+  bottom: -2px;
+  width: 2px;
+  height: 8px;
+  background: var(--text-primary);
+  content: "";
+}
+.map-scale-bar-line::before { left: 0; }
+.map-scale-bar-line::after { right: 0; }
+.map-scale-bar small {
+  display: block;
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font: 10px "IBM Plex Mono", monospace;
+  white-space: nowrap;
+}
 .layer-legend strong { display: block; font-size: 12px; line-height: 1.5; }
 .layer-legend-status { display: block; margin-top: 3px; color: #e2c49d; font-size: 11px; }
 .layer-color-ramp { height: 9px; margin-top: 9px; border-radius: 2px; }
 .layer-legend-scale { display: flex; justify-content: space-between; gap: 8px; margin-top: 5px; font: 10px "IBM Plex Mono", monospace; color: var(--text-secondary); }
 .layer-legend p { margin-top: 7px; font-size: 11px; line-height: 1.45; color: var(--text-secondary); }
 @media (width < 640px) {
-  .layer-legend { left: 16px; bottom: 100px; }
-  .is-selecting .layer-legend { bottom: 170px; }
+  .map-data-overlays {
+    right: 16px;
+    bottom: 100px;
+    left: 16px;
+    gap: 8px;
+    max-width: none;
+  }
+  .map-data-overlays .layer-legend {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    padding: 9px;
+  }
+  .map-scale-bar {
+    min-width: 112px;
+    padding: 8px;
+  }
+  .is-selecting .map-data-overlays { bottom: 170px; }
 }
 
 .map-area.is-selecting {
@@ -1212,11 +1273,19 @@
   cursor: default;
 }
 
-.zoom-controls {
+.zoom-control-group {
   position: absolute;
   z-index: 12;
   right: 24px;
   bottom: 24px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.zoom-controls {
+  position: static;
   display: flex;
   height: 54px;
   overflow: hidden;
@@ -1224,6 +1293,7 @@
   background: rgba(18, 20, 18, 0.76);
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2);
   backdrop-filter: blur(12px);
+  pointer-events: auto;
 }
 
 .zoom-controls button {
@@ -1256,14 +1326,50 @@
   background: rgba(255, 255, 255, 0.17);
 }
 
-.zoom-readout {
-  position: absolute;
-  z-index: 9;
-  right: 148px;
-  bottom: 40px;
-  color: rgba(255, 255, 255, 0.55);
+.zoom-scale-control {
+  position: static;
+  display: flex;
+  width: 66px;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.21);
+  color: rgba(255, 255, 255, 0.76);
+  background: rgba(18, 20, 18, 0.76);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(12px);
+  pointer-events: auto;
+}
+
+.zoom-scale-control label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 14px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.zoom-scale-control output {
+  color: #fff;
+}
+
+.zoom-scale-control input {
+  display: block;
+  width: 16px;
+  height: 150px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+  direction: rtl;
+  writing-mode: vertical-lr;
+}
+
+.zoom-scale-control input:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .photo-credit {
@@ -1349,16 +1455,13 @@
     top: 200px;
     left: 16px;
   }
-  .zoom-controls {
+  .zoom-control-group {
     right: 16px;
     bottom: 24px;
   }
   .view-toggle {
     right: 16px;
     bottom: 90px;
-  }
-  .zoom-readout {
-    right: 140px;
   }
   .map-notice {
     top: 268px;
