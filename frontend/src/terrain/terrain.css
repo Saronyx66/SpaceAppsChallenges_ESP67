@@ -1,0 +1,28 @@
+.terrain-test { position: fixed; inset: 0; overflow-y: auto; background: #151719; color: #e8e5df; display: flex; flex-direction: column; font-family: 'Plus Jakarta Sans', sans-serif; }
+.terrain-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 22px 32px; border-bottom: 1px solid #ffffff16; }
+.terrain-heading p { font: 10px 'IBM Plex Mono', monospace; letter-spacing: .18em; color: #b5a38d; margin-bottom: 7px; }
+.terrain-heading h1 { font-size: 25px; font-weight: 600; margin-bottom: 4px; }
+.terrain-heading span, .terrain-heading a { font-size: 12px; color: #a9aba7; }
+.terrain-heading a:hover { color: #e8e5df; }
+.terrain-viewport { flex: 1; min-height: 480px; position: relative; }
+.terrain-viewport > div:has(canvas) { position: absolute !important; inset: 0; }
+.terrain-tools { position: absolute; top: 20px; left: 28px; display: flex; gap: 8px; }
+.terrain-tools button { padding: 9px 13px; border: 1px solid #ffffff25; border-radius: 5px; font-size: 11px; background: #222628df; color: #dddcd4; }
+.terrain-tools button:hover, .terrain-tools button[aria-pressed=true] { background: #435448; }
+.terrain-tools { flex-wrap: wrap; max-width: calc(100% - 56px); align-items: center; }
+.terrain-tools label, .terrain-tools > span { color: #ccc8bb; font-size: 11px; }
+.terrain-tools select { margin-left: 8px; padding: 8px; background: #222628; color: #dddcd4; border: 1px solid #ffffff25; border-radius: 5px; }
+.terrain-compass { position: absolute; top: 24px; right: 28px; color: #a7aaa4; font: 10px 'IBM Plex Mono', monospace; }
+.terrain-help { position: absolute; bottom: 18px; left: 28px; font-size: 11px; color: #a7aaa4; pointer-events: none; }
+.terrain-status { padding: 100px 30px; color: #cdbba2; }
+.terrain-debug { display: grid; grid-template-columns: repeat(4, 1fr); gap: 25px; padding: 22px 32px; background: #1c1f21; border-top: 1px solid #ffffff16; }
+.terrain-debug > div { display: flex; flex-direction: column; gap: 7px; }
+.terrain-debug small { font: 9px 'IBM Plex Mono', monospace; letter-spacing: .08em; color: #a29a8c; }
+.terrain-debug strong { font: 14px 'IBM Plex Mono', monospace; }
+.terrain-debug span, .terrain-debug details { font-size: 11px; color: #a4a8a3; }
+.terrain-debug details { grid-column: 1 / -1; }
+.terrain-debug summary { cursor: pointer; }
+.terrain-debug pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0; }
+.terrain-debug details p { margin: 10px 0; }
+.terrain-debug a { text-decoration: underline; }
+@media (max-width: 760px) { .terrain-heading { padding: 16px; align-items: flex-start; } .terrain-heading h1 { font-size: 21px; } .terrain-debug { padding: 18px; grid-template-columns: repeat(2, 1fr); gap: 20px; } .terrain-viewport { min-height: 450px; } .terrain-compass { top: auto; bottom: 45px; left: 28px; } }
