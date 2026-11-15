@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 # Load it before importing the algorithm; only the __main__ guard is required
 # in the shared algorithm file. Never persist a machine-specific path in Git.
 BACKEND_DIR = Path(__file__).resolve().parent
+MOTOR_COMMANDS_FILE = BACKEND_DIR / "motor_commands.json"
 load_dotenv(BACKEND_DIR / ".env", override=False)
 _data_dir = os.environ.get("MARS_DATA_DIR", "").strip()
 if not _data_dir:
@@ -135,6 +136,12 @@ def calculate_route(request: RouteRequest):
             result = json.loads(output.read_text())
         result["request"] = {"start":request.start.model_dump(),"goal":request.goal.model_dump(),
                              "start_cell":list(start),"goal_cell":list(goal)}
+        # Persist only a completed route's motor commands. Replace atomically
+        # on the same filesystem, so readers never receive a partial JSON file.
+        with tempfile.TemporaryDirectory(prefix=".motor-export-", dir=BACKEND_DIR) as directory:
+            motor_file = Path(directory) / "motor_commands.json"
+            routing.export_motor_json(routing.to_motor_commands(commands), path=motor_file)
+            motor_file.replace(MOTOR_COMMANDS_FILE)
         return result
     except HTTPException:
         raise

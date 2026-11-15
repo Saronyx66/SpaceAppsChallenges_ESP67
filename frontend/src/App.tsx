@@ -22,7 +22,7 @@ type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
 const MAP_LAYERS = TERRAIN_LAYERS;
 
-const INITIAL_BASE = { x: "24.6", y: "68.2" };
+const INITIAL_BASE = { x: "49.34593023", y: "45.99253794" };
 const INITIAL_DESTINATION = { x: "67.5", y: "34.8" };
 
 function ChevronIcon({ open = false }: { open?: boolean }) {
@@ -70,29 +70,44 @@ function CoordinateFields({
   onChange,
   error,
   id,
+  readOnly = false,
 }: {
   value: Coordinates;
   error: string;
   id: string;
-  onChange: (next: Coordinates) => void;
+  onChange?: (next: Coordinates) => void;
+  readOnly?: boolean;
 }) {
   return (
     <>
       <div className="coordinate-grid">
-        {(["x", "y"] as const).map((axis) => (
-          <label className="coordinate-field" key={axis}>
-            <span>{axis.toUpperCase()}</span>
-            <input
-              aria-label={`${axis.toUpperCase()} coordinate`}
-              aria-invalid={!!error}
-              aria-describedby={error ? `${id}-error` : undefined}
-              inputMode="decimal"
-              onChange={(event) => onChange({ ...value, [axis]: event.target.value })}
-              type="text"
-              value={value[axis]}
-            />
-          </label>
-        ))}
+        {(["x", "y"] as const).map((axis) => {
+          const coordinate = value[axis];
+          const displayValue =
+            readOnly && coordinate.trim() && Number.isFinite(Number(coordinate))
+              ? Number(coordinate).toFixed(3)
+              : coordinate;
+          return (
+            <label className="coordinate-field" key={axis}>
+              <span>{axis.toUpperCase()}</span>
+              <input
+                aria-label={`${axis.toUpperCase()} coordinate`}
+                aria-readonly={readOnly}
+                aria-invalid={!!error}
+                aria-describedby={error ? `${id}-error` : undefined}
+                inputMode="decimal"
+                onChange={
+                  onChange
+                    ? (event) => onChange({ ...value, [axis]: event.target.value })
+                    : undefined
+                }
+                readOnly={readOnly}
+                type="text"
+                value={displayValue}
+              />
+            </label>
+          );
+        })}
       </div>
       {error && (
         <p id={`${id}-error`} className="coordinate-error" role="alert">
@@ -145,6 +160,7 @@ function App() {
   } | null>(null);
   const [selectingDestination, setSelectingDestination] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
   const cameraRef = useRef<TerrainCamera | null>(null);
   const [validation, setValidation] = useState({ base: false, destination: false, ready: false });
   const [notice, setNotice] = useState("");
@@ -433,14 +449,10 @@ function App() {
               </div>
             </div>
             <CoordinateFields
-              onChange={(next) => {
-                clearSavedRoute();
-                setBase(next);
-                setRouteCalculated(false);
-              }}
               value={base}
               error={coordinateError(base, validation.base)}
               id="base"
+              readOnly
             />
           </section>
 
@@ -573,6 +585,7 @@ function App() {
             onRouteDisplayed={onRouteDisplayed}
             onRouteError={onRouteError}
             layer={activeLayer}
+            view={viewMode}
             base={base}
             destination={destination}
             selecting={selectingDestination}
@@ -582,6 +595,22 @@ function App() {
             onValidation={setValidation}
           />
         </Suspense>
+
+        {routeLoading && (
+          <div className="route-loading-overlay" role="status" aria-live="polite" aria-busy="true">
+            <div className="route-loading-card">
+              <p className="route-loading-message">
+                Calculando ruta
+                <span className="route-loading-dots" aria-hidden="true">
+                  <span>.</span>
+                  <span>.</span>
+                  <span>.</span>
+                </span>
+              </p>
+              <small>El servicio está procesando el terreno.</small>
+            </div>
+          </div>
+        )}
 
         <div className="map-vignette" />
         <div className="region-chip">
@@ -689,6 +718,26 @@ function App() {
               )}
           </aside>
         )}
+
+        <div
+          className="view-toggle"
+          role="group"
+          aria-label="Map view mode"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {(["3d", "2d"] as const).map((mode) => (
+            <button
+              aria-pressed={viewMode === mode}
+              className={viewMode === mode ? "is-active" : ""}
+              disabled={!validation.ready}
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              type="button"
+            >
+              {mode.toUpperCase()}
+            </button>
+          ))}
+        </div>
 
         <div
           className="zoom-controls"

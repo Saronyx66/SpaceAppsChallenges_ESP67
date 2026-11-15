@@ -6,3 +6,5 @@
 phlegra-full/
 .venv/
 __pycache__/
+# Output from the latest successful route calculation.
+/motor_commands.json
