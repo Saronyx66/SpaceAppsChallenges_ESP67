@@ -814,7 +814,7 @@
   backdrop-filter: blur(20px) saturate(0.78);
   animation: card-in 240ms ease-out;
   container-name: route-panel;
-  container-type: inline-size;
+  container-type: size;
 }
 
 @keyframes card-in {
@@ -826,10 +826,11 @@
 
 .route-card-header {
   display: flex;
+  flex-shrink: 0;
   width: 100%;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 19px;
+  padding: clamp(12px, 3cqw, 20px) clamp(16px, 4cqw, 24px);
   border: 0;
   color: inherit;
   background: transparent;
@@ -852,12 +853,12 @@
 .route-card-header small {
   color: rgba(255, 255, 255, 0.48);
   font-family: "IBM Plex Mono", monospace;
-  font-size: 10px;
+  font-size: clamp(10px, calc(1.8cqw + 0.6cqh), 14px);
   letter-spacing: 0.16em;
 }
 
 .route-card-header strong {
-  font-size: 18px;
+  font-size: clamp(18px, calc(3cqw + 1.8cqh), 28px);
   font-weight: 700;
 }
 
@@ -900,6 +901,7 @@
 
 .route-success {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 9px;
   padding: 12px 19px;
@@ -907,7 +909,7 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   color: #7be495;
   background: rgba(15, 76, 92, 0.2);
-  font-size: 13px;
+  font-size: clamp(13px, calc(2.5cqw + 1.2cqh), 20px);
   font-weight: 600;
 }
 
@@ -920,6 +922,8 @@
 }
 
 .route-panel-body {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   flex: 1;
   overflow: auto;
@@ -930,7 +934,9 @@
 
 .route-metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(124px, 1fr));
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(3, minmax(64px, 1fr));
   gap: 1px;
   padding: 1px;
   background: rgba(255, 255, 255, 0.1);
@@ -938,10 +944,12 @@
 
 .metric {
   display: flex;
-  min-height: 78px;
-  flex-direction: column;
-  justify-content: center;
-  padding: 14px 16px;
+  min-width: 0;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: clamp(12px, 3cqw, 22px) clamp(16px, 4cqw, 24px);
   background: rgba(25, 28, 30, 0.72);
 }
 
@@ -950,20 +958,28 @@
   align-items: center;
   gap: 7px;
   color: rgba(255, 255, 255, 0.52);
-  font-size: 13px;
+  font-size: clamp(13px, calc(2.5cqw + 1.2cqh), 20px);
   font-weight: 500;
 }
 
 .metric strong {
-  margin-top: 7px;
+  min-width: 0;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 20px;
+  font-size: clamp(18px, calc(4cqw + 1.8cqh), 38px);
   font-weight: 500;
+  line-height: 1.2;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .metric--risk strong {
   color: rgba(255, 255, 255, 0.72);
-  font-size: 16px;
+}
+
+@container route-panel (min-width: 460px) and (min-aspect-ratio: 6/5) {
+  .route-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: minmax(64px, 1fr); }
+  .metric { flex-direction: column; align-items: flex-start; justify-content: center; }
+  .metric strong { font-size: clamp(18px, calc(3.6cqw + 1.2cqh), 32px); text-align: left; }
 }
 
 .metric--risk.risk-low strong {
@@ -1001,7 +1017,11 @@
 
 .route-card.is-collapsed {
   height: auto !important;
+  container-type: inline-size;
 }
+.route-card.is-collapsed .route-card-header { padding: 18px 19px; }
+.route-card.is-collapsed .route-card-header small { font-size: 10px; }
+.route-card.is-collapsed .route-card-header strong { font-size: 18px; }
 
 .resize-handle {
   position: absolute;

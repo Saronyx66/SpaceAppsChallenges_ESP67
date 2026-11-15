@@ -17,6 +17,7 @@ SCALE = 0.001
 WHEEL_DIAMETER_M = 0.065
 TRACK_WIDTH_M = 0.15
 START_HEADING_DEG = 0.0
+WALK_SPEED_KMH = 2.0
 
 
 def load_dtm(path, factor=4):
@@ -179,7 +180,31 @@ def path_stats(path, z, slope, res):
             "max_slope_deg": round(float(slope[r, c].max()), 2)}
 
 
-def export_threejs(waypoints, cmds, z, res, path="route_threejs.json"):
+def route_summary(pts, slope, dust, warm, res, max_slope=20):
+    r = np.array([p["row"] for p in pts])
+    c = np.array([p["col"] for p in pts])
+    e = np.array([p["elev"] for p in pts])
+    flat = np.hypot(np.diff(r), np.diff(c)) * res
+    dz = np.diff(e)
+    dist = np.hypot(flat, dz)
+    grade = np.divide(dz, flat, out=np.zeros_like(dz), where=flat > 0)
+    speed_kmh = WALK_SPEED_KMH / 5 * 6 * np.exp(-3.5 * np.abs(grade + 0.05))
+    hours = np.sum(dist / 1000 / speed_kmh)
+
+    cell_risk = (0.6 * np.clip(slope[r, c] / max_slope, 0, 1)
+                 + 0.25 * np.nan_to_num(dust[r, c], nan=0.5)
+                 + 0.15 * (1 - np.nan_to_num(warm[r, c], nan=0.5)))
+    risk = 1 + 9 * (0.5 * cell_risk.mean() + 0.5 * np.percentile(cell_risk, 95))
+
+    return {"risk_index": round(float(risk), 1),
+            "total_distance_m": round(float(dist.sum()), 1),
+            "robot_distance_m": round(float(dist.sum() * SCALE), 3),
+            "est_time_h": round(float(hours), 2),
+            "est_time_hms": f"{int(hours)}h {int(hours * 60 % 60):02d}m",
+            "walk_speed_kmh": WALK_SPEED_KMH}
+
+
+def export_threejs(waypoints, cmds, z, res, slope, dust, warm, path="route_threejs.json"):
     h, w = z.shape
     pts = []
     for a, b in zip(waypoints[:-1], waypoints[1:]):
@@ -190,7 +215,9 @@ def export_threejs(waypoints, cmds, z, res, path="route_threejs.json"):
                             "u": cc / (w - 1), "v": rr / (h - 1),
                             "x": (cc - (w - 1) / 2) * res, "z": (rr - (h - 1) / 2) * res,
                             "elev": float(z[rr, cc])})
-    data = {"grid": {"rows": h, "cols": w, "res_m": res,
+    summary = route_summary(pts, slope, dust, warm, res)
+    data = {"summary": summary,
+            "grid": {"rows": h, "cols": w, "res_m": res,
                      "width_m": (w - 1) * res, "height_m": (h - 1) * res,
                      "elev_min": float(np.nanmin(z)), "elev_max": float(np.nanmax(z))},
             "robot": {"scale": SCALE, "wheel_diameter_m": WHEEL_DIAMETER_M,
@@ -202,6 +229,7 @@ def export_threejs(waypoints, cmds, z, res, path="route_threejs.json"):
             "points": pts}
     with open(path, "w") as f:
         json.dump(data, f)
+    print(summary)
     return path
 
 
@@ -242,7 +270,7 @@ def main():
     for c in cmds:
         print(c)
 
-    out = export_threejs(waypoints, cmds, z, res)
+    out = export_threejs(waypoints, cmds, z, res, slope, dust, warm)
     plot_route(z, path, waypoints)
     try:
         from google.colab import files
@@ -252,4 +280,5 @@ def main():
     return cmds
 
 
-cmds = main()
+if __name__ == "__main__":
+    cmds = main()
