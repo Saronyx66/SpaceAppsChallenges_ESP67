@@ -17,6 +17,10 @@ SCALE = 0.001
 START_HEADING_DEG = 0.0
 DRIVE_PWM = 180
 TURN_PWM = 150
+WHEEL_DIAMETER_M = 0.065
+TRACK_WIDTH_M = 0.15
+MOTOR_RPM_FULL = 200
+PAUSE_MS = 200
 WALK_SPEED_KMH = 2.0
 
 
@@ -163,9 +167,13 @@ def to_commands(waypoints, res):
     return cmds
 
 
-def motor_step(speed, left_on, right_on, direction):
-    return {"speed": int(speed), "left_on": int(left_on),
-            "right_on": int(right_on), "direction": int(direction)}
+def wheel_speed_mps(pwm):
+    return MOTOR_RPM_FULL * pwm / 255 / 60 * np.pi * WHEEL_DIAMETER_M
+
+
+def motor_step(speed, left_on, right_on, direction, ms):
+    return {"speed": int(speed), "left_on": int(left_on), "right_on": int(right_on),
+            "direction": int(direction), "duration_ms": int(round(ms))}
 
 
 def to_motor_commands(cmds):
@@ -173,10 +181,13 @@ def to_motor_commands(cmds):
     for c in cmds:
         if c["action"] == "turn":
             right = c["angle_deg"] > 0
-            out.append(motor_step(TURN_PWM, right, not right, 1))
+            arc = np.radians(abs(c["angle_deg"])) * TRACK_WIDTH_M
+            ms = arc / wheel_speed_mps(TURN_PWM) * 1000
+            out.append(motor_step(TURN_PWM, right, not right, 1, ms))
         else:
-            out.append(motor_step(DRIVE_PWM, 1, 1, 1))
-        out.append(motor_step(0, 0, 0, 1))
+            ms = c["robot_distance_m"] / wheel_speed_mps(DRIVE_PWM) * 1000
+            out.append(motor_step(DRIVE_PWM, 1, 1, 1, ms))
+        out.append(motor_step(0, 0, 0, 1, PAUSE_MS))
     return out
 
 
