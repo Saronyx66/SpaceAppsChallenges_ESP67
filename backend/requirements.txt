@@ -1,0 +1,9 @@
+numpy
+rasterio
+matplotlib
+Pillow
+scipy
+python-dotenv
+fastapi>=0.100
+pydantic>=2
+uvicorn>=0.23

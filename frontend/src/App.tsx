@@ -3,6 +3,13 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import type { TerrainCamera } from "./terrain/TerrainScene";
 import type { MapCoordinates } from "./terrain/surface";
 import { TERRAIN_LAYERS, terrainLayer, type TerrainLayerId } from "./terrain/layers";
+import {
+  parseSavedRoute,
+  formatRouteDistance,
+  type SavedRoute,
+  type DisplayedRoute,
+  type RouteSummary,
+} from "./terrain/savedRoute";
 const DashboardTerrain = lazy(() => import("./terrain/DashboardTerrain"));
 // Match the CSS viewport breakpoint exactly: 1024px is always desktop.
 const MOBILE_LAYOUT_QUERY = "(width < 1024px)";
@@ -112,15 +119,17 @@ function App() {
   const [destination, setDestination] = useState<Coordinates>(INITIAL_DESTINATION);
   const [activeLayer, setActiveLayer] = useState<MapLayer>("altitude");
   const [layersOpen, setLayersOpen] = useState(true);
-  // Retain the panel implementation, but no frontend action opens it until
-  // actual route results are supplied by a future integration.
+  // Show only the summary attached to the successfully displayed route.
   const [routeCalculated, setRouteCalculated] = useState(false);
+  const [routeSummary, setRouteSummary] = useState<RouteSummary | null>(null);
   const [routePanelOpen, setRoutePanelOpen] = useState(true);
   const [routePanelPosition, setRoutePanelPosition] = useState<Point>({ x: 22, y: 22 });
   const [routePanelDimensions, setRoutePanelDimensions] = useState<Size>({
     width: 320,
     height: 350,
   });
+  const routePanelDimensionsRef = useRef(routePanelDimensions);
+  routePanelDimensionsRef.current = routePanelDimensions;
   const [routeDragStart, setRouteDragStart] = useState<{
     clientX: number;
     clientY: number;
@@ -139,17 +148,87 @@ function App() {
   const cameraRef = useRef<TerrainCamera | null>(null);
   const [validation, setValidation] = useState({ base: false, destination: false, ready: false });
   const [notice, setNotice] = useState("");
-  const mapRef = useRef<HTMLDivElement>(null);
-  const routeCardRef = useRef<HTMLElement>(null);
-  const onDestinationSelect = useCallback((value: MapCoordinates | null) => {
-    if (!value) {
-      setNotice("Choose a point on valid terrain, away from gaps.");
-      return;
-    }
-    setDestination(value);
-    setSelectingDestination(false);
+  const [savedRoute, setSavedRoute] = useState<SavedRoute | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const routeRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => routeRequest.current?.abort(), []);
+  const clearSavedRoute = useCallback(() => {
+    routeRequest.current?.abort();
+    setSavedRoute(null);
+    setRouteCalculated(false);
+    setRouteSummary(null);
+    setRouteLoading(false);
     setNotice("");
   }, []);
+  const onRouteDisplayed = useCallback((route: DisplayedRoute) => {
+    setBase(route.base);
+    setDestination(route.destination);
+    setRouteLoading(false);
+    setRouteSummary(route.summary);
+    setRoutePanelOpen(true);
+    if (mapRef.current) {
+      const dimensions = {
+        width: Math.min(routePanelDimensionsRef.current.width, mapRef.current.clientWidth),
+        height: Math.min(routePanelDimensionsRef.current.height, mapRef.current.clientHeight),
+      };
+      setRoutePanelDimensions(dimensions);
+      setRoutePanelPosition({
+        x: Math.max(0, mapRef.current.clientWidth - dimensions.width - 22),
+        y: Math.max(0, Math.min(22, mapRef.current.clientHeight - dimensions.height)),
+      });
+    }
+    setRouteCalculated(true);
+    setNotice(
+      route.clippedSamples
+        ? "Route calculated; sections outside valid terrain are hidden."
+        : "Route calculated.",
+    );
+  }, []);
+  const onRouteError = useCallback((message: string) => {
+    setSavedRoute(null);
+    setRouteCalculated(false);
+    setRouteSummary(null);
+    setRouteLoading(false);
+    setNotice(message);
+  }, []);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const routeCardRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!routeCalculated || !mapRef.current) return;
+    const map = mapRef.current;
+    const observer = new ResizeObserver(() => {
+      if (map.clientWidth < 280 || map.clientHeight < 200) return;
+      const dimensions = {
+        width: Math.min(routePanelDimensionsRef.current.width, map.clientWidth),
+        height: Math.min(routePanelDimensionsRef.current.height, map.clientHeight),
+      };
+      setRoutePanelDimensions((current) =>
+        current.width === dimensions.width && current.height === dimensions.height
+          ? current
+          : dimensions,
+      );
+      setRoutePanelPosition((current) => {
+        const x = Math.max(0, Math.min(current.x, map.clientWidth - dimensions.width));
+        const y = Math.max(0, Math.min(current.y, map.clientHeight - dimensions.height));
+        return x === current.x && y === current.y ? current : { x, y };
+      });
+    });
+    observer.observe(map);
+    return () => observer.disconnect();
+  }, [routeCalculated]);
+  const onDestinationSelect = useCallback(
+    (value: MapCoordinates | null) => {
+      if (!value) {
+        setNotice("Choose a point on valid terrain, away from gaps.");
+        return;
+      }
+      clearSavedRoute();
+      setDestination(value);
+      setSelectingDestination(false);
+      setNotice("");
+    },
+    [clearSavedRoute],
+  );
   const coordinateError = (value: Coordinates, valid: boolean) => {
     if (
       [value.x, value.y].some(
@@ -264,9 +343,42 @@ function App() {
     setRoutePanelOpen((current) => !current);
   };
 
-  const calculateRoute = () => {
+  const calculateRoute = async () => {
+    if (!validation.ready || !validation.base || !validation.destination) {
+      setNotice("Choose valid starting and destination coordinates.");
+      return;
+    }
     setRouteCalculated(false);
-    setNotice("Route calculation is not connected yet.");
+    clearSavedRoute();
+    setSelectingDestination(false);
+    if (narrowLayout) setSidebarOpen(false);
+    const request = new AbortController();
+    routeRequest.current = request;
+    setRouteLoading(true);
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}api/route`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start: { x: Number(base.x), y: Number(base.y) },
+          goal: { x: Number(destination.x), y: Number(destination.y) },
+        }),
+        cache: "no-store",
+        signal: request.signal,
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload)
+        throw Error(
+          typeof payload?.detail === "string"
+            ? payload.detail
+            : "Routing service unavailable. Please start the Python backend.",
+        );
+      const data = parseSavedRoute(payload);
+      if (!request.signal.aborted) setSavedRoute(data);
+    } catch (error) {
+      if (!request.signal.aborted)
+        onRouteError(error instanceof Error ? error.message : "Could not load the saved route.");
+    }
   };
 
   const selectedLayer = terrainLayer(activeLayer);
@@ -322,6 +434,7 @@ function App() {
             </div>
             <CoordinateFields
               onChange={(next) => {
+                clearSavedRoute();
                 setBase(next);
                 setRouteCalculated(false);
               }}
@@ -340,6 +453,7 @@ function App() {
             </div>
             <CoordinateFields
               onChange={(next) => {
+                clearSavedRoute();
                 setDestination(next);
                 setRouteCalculated(false);
               }}
@@ -433,8 +547,14 @@ function App() {
               <small>{validation.ready ? "Terrain explorer" : "Loading terrain"}</small>
             </p>
           </div>
-          <button className="calculate-button" onClick={calculateRoute} type="button">
-            <span>Calculate Route</span>
+          <button
+            className="calculate-button"
+            onClick={calculateRoute}
+            type="button"
+            disabled={!validation.ready || routeLoading}
+            aria-busy={routeLoading}
+          >
+            <span>{routeLoading ? "Calculating Route…" : "Calculate Route"}</span>
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="M5 12h14M14 7l5 5-5 5" />
             </svg>
@@ -449,6 +569,9 @@ function App() {
       >
         <Suspense fallback={<p className="dashboard-terrain-status">Loading 3D terrain…</p>}>
           <DashboardTerrain
+            route={savedRoute}
+            onRouteDisplayed={onRouteDisplayed}
+            onRouteError={onRouteError}
             layer={activeLayer}
             base={base}
             destination={destination}
@@ -484,6 +607,7 @@ function App() {
 
         {routeCalculated && (
           <aside
+            aria-label="Route information"
             className={`route-card ${routePanelOpen ? "" : "is-collapsed"} ${
               routeDragStart ? "is-dragging" : ""
             } ${routeResizeStart ? "is-resizing" : ""}`}
@@ -524,7 +648,7 @@ function App() {
               <div className="route-panel-body">
                 <div className="route-success">
                   <span />
-                  Route information
+                  Route calculated
                 </div>
                 <div className="route-metrics">
                   <div className="metric metric--risk">
@@ -532,15 +656,20 @@ function App() {
                       <WarningIcon />
                       Risk Index
                     </span>
-                    <strong>Pending</strong>
+                    <strong>
+                      {routeSummary?.riskIndex != null
+                        ? `${routeSummary.riskIndex.toFixed(1)} / 10`
+                        : "Unavailable"}
+                    </strong>
                   </div>
-                  {["Distance", "Estimated Time"].map((metric) => (
-                    <div className="metric" key={metric}>
-                      <span>{metric}</span>
-                      <strong>—</strong>
-                    </div>
-                  ))}
-                  <p>Route calculation is not connected yet.</p>
+                  <div className="metric">
+                    <span>Distance</span>
+                    <strong>{formatRouteDistance(routeSummary?.distanceM)}</strong>
+                  </div>
+                  <div className="metric">
+                    <span>Estimated Time</span>
+                    <strong>{routeSummary?.estimatedTime ?? "Unavailable"}</strong>
+                  </div>
                 </div>
               </div>
             )}

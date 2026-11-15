@@ -1,0 +1,8 @@
+# Raw DTM and generated terrain bundles are too big for GitHub; keep them local.
+*.[iI][mM][gG]
+*.[tT][iI][fF]
+*.[tT][iI][fF][fF]
+*.gz
+phlegra-full/
+.venv/
+__pycache__/

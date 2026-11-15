@@ -298,4 +298,4 @@ def main():
     return motor_cmds
 
 
-motor_cmds = main()
+cmds = main()
